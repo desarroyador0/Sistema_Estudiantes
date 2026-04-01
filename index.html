@@ -1,0 +1,1358 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar
+} from "recharts";
+
+// ============================================================
+// MOCK DATA & CONSTANTS
+// ============================================================
+const SUBJECTS = [
+  { id: 1, name: "Matemáticas", color: "#00FF87", short: "MAT" },
+  { id: 2, name: "Física", color: "#0090FF", short: "FIS" },
+  { id: 3, name: "Historia", color: "#FF6B6B", short: "HIS" },
+  { id: 4, name: "Literatura", color: "#FFD700", short: "LIT" },
+  { id: 5, name: "Química", color: "#FF61D2", short: "QUI" },
+];
+
+const INITIAL_GRADES = [
+  { id: 1, subjectId: 1, name: "Parcial 1", date: "2025-03-10", grade: 8.5, weight: 30 },
+  { id: 2, subjectId: 1, name: "TP Integrador", date: "2025-04-02", grade: 9.0, weight: 20 },
+  { id: 3, subjectId: 2, name: "Parcial 1", date: "2025-03-15", grade: 7.0, weight: 40 },
+  { id: 4, subjectId: 3, name: "Ensayo", date: "2025-03-20", grade: 9.5, weight: 25 },
+  { id: 5, subjectId: 4, name: "Análisis", date: "2025-04-01", grade: 8.0, weight: 30 },
+  { id: 6, subjectId: 5, name: "Lab 1", date: "2025-03-25", grade: 7.5, weight: 20 },
+];
+
+const INITIAL_TASKS = [
+  { id: 1, title: "Resolver ejercicios capítulo 5", subjectId: 1, due: "2025-04-20", priority: "alta", status: "pendiente" },
+  { id: 2, title: "Leer capítulos 3-4 de Física", subjectId: 2, due: "2025-04-19", priority: "media", status: "en progreso" },
+  { id: 3, title: "Ensayo sobre la Revolución", subjectId: 3, due: "2025-04-21", priority: "alta", status: "pendiente" },
+  { id: 4, title: "Análisis de El Quijote", subjectId: 4, due: "2025-04-25", priority: "baja", status: "completada" },
+  { id: 5, title: "Informe de laboratorio", subjectId: 5, due: "2025-04-22", priority: "media", status: "pendiente" },
+  { id: 6, title: "Preparar exposición grupal", subjectId: 1, due: "2025-04-28", priority: "alta", status: "en progreso" },
+];
+
+const INITIAL_HABITS = [
+  { id: 1, name: "Tomar agua 💧", streak: 5 },
+  { id: 2, name: "Ejercitar 🏃", streak: 3 },
+  { id: 3, name: "Leer 30min 📖", streak: 7 },
+  { id: 4, name: "Dormir 8hs 😴", streak: 2 },
+  { id: 5, name: "Meditar 🧘", streak: 1 },
+];
+
+const HABIT_LOG = {
+  "2025-04-14": [1, 3, 4],
+  "2025-04-15": [1, 2, 3],
+  "2025-04-16": [1, 3],
+  "2025-04-17": [1, 2, 3, 4],
+  "2025-04-18": [1, 3, 5],
+  "2025-04-19": [1, 2, 3, 4, 5],
+  "2025-04-20": [1, 3],
+};
+
+const INITIAL_FINANCES = {
+  balance: 15420,
+  savingsGoal: 20000,
+  transactions: [
+    { id: 1, desc: "Beca universitaria", cat: "ingreso", amount: 12000, date: "2025-04-01", type: "income" },
+    { id: 2, desc: "Trabajo part-time", cat: "ingreso", amount: 8000, date: "2025-04-05", type: "income" },
+    { id: 3, desc: "Almuerzo campus", cat: "comida", amount: -350, date: "2025-04-10", type: "expense" },
+    { id: 4, desc: "Libros Física", cat: "materiales", amount: -1200, date: "2025-04-11", type: "expense" },
+    { id: 5, desc: "Transporte semanal", cat: "transporte", amount: -800, date: "2025-04-12", type: "expense" },
+    { id: 6, desc: "Cine con amigos", cat: "ocio", amount: -600, date: "2025-04-13", type: "expense" },
+    { id: 7, desc: "Supermercado", cat: "comida", amount: -1200, date: "2025-04-15", type: "expense" },
+    { id: 8, desc: "Cuadernos", cat: "materiales", amount: -300, date: "2025-04-17", type: "expense" },
+  ],
+};
+
+const POMODORO_SESSIONS = [
+  { date: "2025-04-18", duration: 25, subject: "Matemáticas" },
+  { date: "2025-04-18", duration: 25, subject: "Física" },
+  { date: "2025-04-19", duration: 25, subject: "Historia" },
+  { date: "2025-04-19", duration: 25, subject: "Matemáticas" },
+  { date: "2025-04-19", duration: 25, subject: "Química" },
+  { date: "2025-04-20", duration: 25, subject: "Literatura" },
+];
+
+const NEON_GREEN = "#00FF87";
+const ELECTRIC_BLUE = "#0090FF";
+const BG = "#0A0A0F";
+const CARD_BG = "rgba(255,255,255,0.04)";
+const CARD_BORDER = "rgba(255,255,255,0.08)";
+
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+function formatDate(d) {
+  return new Date(d + "T00:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+}
+function getSubject(id) {
+  return SUBJECTS.find(s => s.id === id) || SUBJECTS[0];
+}
+function calcAvg(grades, subjectId) {
+  const sg = grades.filter(g => g.subjectId === subjectId);
+  if (!sg.length) return 0;
+  const totalWeight = sg.reduce((s, g) => s + g.weight, 0);
+  const weighted = sg.reduce((s, g) => s + g.grade * g.weight, 0);
+  return totalWeight > 0 ? (weighted / totalWeight).toFixed(1) : 0;
+}
+
+// ============================================================
+// GLOBAL STYLES
+// ============================================================
+const globalStyle = `
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Nunito:wght@400;600;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: ${BG}; color: #fff; font-family: 'Nunito', sans-serif; overflow-x: hidden; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  .mono { font-family: 'Space Mono', monospace; }
+  @keyframes fadeSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  .fade-in { animation: fadeSlideUp 0.35s ease both; }
+  .pulse { animation: pulse 1.5s ease infinite; }
+`;
+
+// ============================================================
+// REUSABLE COMPONENTS
+// ============================================================
+
+function Card({ children, style, className = "", onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      className={className}
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: 16,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        padding: 16,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Badge({ color, children }) {
+  return (
+    <span style={{
+      background: color + "22",
+      color,
+      border: `1px solid ${color}44`,
+      borderRadius: 20,
+      padding: "2px 10px",
+      fontSize: 11,
+      fontWeight: 700,
+      fontFamily: "Space Mono, monospace",
+      letterSpacing: 0.5,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function Pill({ color, children, small }) {
+  return (
+    <span style={{
+      background: color + "33",
+      color,
+      borderRadius: 8,
+      padding: small ? "1px 7px" : "3px 10px",
+      fontSize: small ? 10 : 12,
+      fontWeight: 700,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function ProgressBar({ value, max, color = NEON_GREEN, height = 6 }) {
+  const pct = Math.min(100, (value / max) * 100);
+  return (
+    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 99, height, overflow: "hidden" }}>
+      <div style={{
+        width: `${pct}%`, height: "100%", borderRadius: 99,
+        background: `linear-gradient(90deg, ${color}, ${color}99)`,
+        transition: "width 0.6s ease",
+        boxShadow: `0 0 8px ${color}88`,
+      }} />
+    </div>
+  );
+}
+
+function Modal({ open, onClose, title, children }) {
+  if (!open) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.75)",
+      backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "flex-end",
+    }} onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 430, margin: "0 auto",
+          background: "#12121A",
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: "24px 24px 0 0",
+          padding: "24px 20px 40px",
+          animation: "fadeSlideUp 0.25s ease",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: NEON_GREEN }}>{title}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 20, cursor: "pointer" }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, type = "text", placeholder }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ fontSize: 11, color: "#888", fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6, fontFamily: "Space Mono, monospace" }}>
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: "100%", background: "rgba(255,255,255,0.05)",
+          border: `1px solid ${CARD_BORDER}`, borderRadius: 10,
+          padding: "10px 12px", color: "#fff", fontSize: 14,
+          outline: "none", fontFamily: "Nunito, sans-serif",
+        }}
+      />
+    </div>
+  );
+}
+
+function Select({ label, value, onChange, options }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ fontSize: 11, color: "#888", fontWeight: 700, letterSpacing: 1, display: "block", marginBottom: 6, fontFamily: "Space Mono, monospace" }}>
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          width: "100%", background: "#1A1A25",
+          border: `1px solid ${CARD_BORDER}`, borderRadius: 10,
+          padding: "10px 12px", color: "#fff", fontSize: 14,
+          outline: "none", fontFamily: "Nunito, sans-serif",
+        }}
+      >
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function ActionBtn({ children, onClick, color = NEON_GREEN, small }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: `linear-gradient(135deg, ${color}22, ${color}11)`,
+        border: `1px solid ${color}55`,
+        color,
+        borderRadius: 12,
+        padding: small ? "8px 16px" : "12px 24px",
+        fontSize: small ? 12 : 14,
+        fontWeight: 700,
+        cursor: "pointer",
+        fontFamily: "Space Mono, monospace",
+        boxShadow: `0 0 12px ${color}22`,
+        transition: "all 0.2s ease",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ============================================================
+// BOTTOM NAVIGATION
+// ============================================================
+const NAV_TABS = [
+  { id: "dashboard", label: "Inicio", icon: (a) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill={a ? NEON_GREEN : "#666"}>
+      <path d="M3 9.5L12 3l9 6.5V21a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" strokeWidth="1.5" stroke={a ? NEON_GREEN : "#555"} fill={a ? NEON_GREEN + "33" : "none"}/>
+      <path d="M9 21V12h6v9" stroke={a ? NEON_GREEN : "#666"} strokeWidth="1.5" fill="none"/>
+    </svg>
+  )},
+  { id: "academic", label: "Académico", icon: (a) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? ELECTRIC_BLUE : "#666"} strokeWidth="1.5">
+      <path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 9v6m20-6v6M7 11.5v5a5 5 0 0010 0v-5"/>
+    </svg>
+  )},
+  { id: "tasks", label: "Tareas", icon: (a) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? "#FF6B6B" : "#666"} strokeWidth="1.5">
+      <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-5"/>
+    </svg>
+  )},
+  { id: "pomodoro", label: "Focus", icon: (a) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? "#FFD700" : "#666"} strokeWidth="1.5">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
+    </svg>
+  )},
+  { id: "finances", label: "Finanzas", icon: (a) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? "#FF61D2" : "#666"} strokeWidth="1.5">
+      <path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/>
+      <path d="M12 6v2m0 8v2M8 12h8"/>
+    </svg>
+  )},
+  { id: "habits", label: "Hábitos", icon: (a) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={a ? "#00FF87" : "#666"} strokeWidth="1.5">
+      <path d="M12 2C8 2 4 6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4-4-8-8-8z"/>
+    </svg>
+  )},
+];
+
+function BottomNav({ active, onTab }) {
+  return (
+    <nav style={{
+      position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+      width: "100%", maxWidth: 430,
+      background: "rgba(10,10,18,0.92)",
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+      borderTop: `1px solid ${CARD_BORDER}`,
+      display: "flex",
+      zIndex: 100,
+      paddingBottom: "env(safe-area-inset-bottom, 8px)",
+    }}>
+      {NAV_TABS.map(t => (
+        <button
+          key={t.id}
+          onClick={() => onTab(t.id)}
+          style={{
+            flex: 1, background: "none", border: "none",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            padding: "10px 0 6px", cursor: "pointer", gap: 3,
+            transition: "all 0.2s",
+          }}
+        >
+          {t.icon(active === t.id)}
+          <span style={{
+            fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+            color: active === t.id ? "#fff" : "#555",
+            fontFamily: "Space Mono, monospace",
+            transition: "color 0.2s",
+          }}>
+            {t.label}
+          </span>
+          {active === t.id && (
+            <div style={{
+              width: 4, height: 4, borderRadius: "50%",
+              background: NEON_GREEN,
+              boxShadow: `0 0 6px ${NEON_GREEN}`,
+            }} />
+          )}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function Dashboard({ tasks, habits, habitLog, grades, pomodoroSessions }) {
+  const todayStr = today();
+  const todayTasks = tasks.filter(t => t.due === todayStr && t.status !== "completada");
+  const weeklyData = [
+    { day: "L", done: 3 }, { day: "M", done: 5 }, { day: "M", done: 2 },
+    { day: "J", done: 4 }, { day: "V", done: 6 }, { day: "S", done: 1 }, { day: "D", done: 0 },
+  ];
+  const streak = 7;
+  const todayHabitsLog = habitLog[todayStr] || [];
+  const upcomingExams = tasks.filter(t => t.priority === "alta" && t.status !== "completada").slice(0, 2);
+
+  return (
+    <div className="fade-in" style={{ padding: "0 16px 100px" }}>
+      {/* Header */}
+      <div style={{ padding: "20px 0 16px" }}>
+        <p style={{ color: "#666", fontSize: 12, fontFamily: "Space Mono, monospace", letterSpacing: 1 }}>
+          {new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
+        </p>
+        <h1 style={{ fontSize: 26, fontWeight: 800, marginTop: 4, lineHeight: 1.2 }}>
+          Hola, <span style={{ color: NEON_GREEN }}>Valentina</span> 👋
+        </h1>
+      </div>
+
+      {/* Streak Card */}
+      <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${NEON_GREEN}15, ${ELECTRIC_BLUE}10)`, border: `1px solid ${NEON_GREEN}33` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ fontSize: 36 }}>🔥</div>
+          <div>
+            <p style={{ color: "#888", fontSize: 11, fontFamily: "Space Mono, monospace" }}>RACHA DE ESTUDIO</p>
+            <p className="mono" style={{ fontSize: 28, fontWeight: 700, color: NEON_GREEN }}>{streak} días</p>
+          </div>
+          <div style={{ marginLeft: "auto", textAlign: "right" }}>
+            <p style={{ color: "#666", fontSize: 10 }}>Esta semana</p>
+            <p className="mono" style={{ color: ELECTRIC_BLUE, fontSize: 18, fontWeight: 700 }}>24h</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Stats Row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+        {[
+          { label: "Pendientes", value: tasks.filter(t => t.status === "pendiente").length, color: "#FF6B6B" },
+          { label: "En progreso", value: tasks.filter(t => t.status === "en progreso").length, color: ELECTRIC_BLUE },
+          { label: "Hoy OK", value: pomodoroSessions.filter(s => s.date === "2025-04-20").length, color: NEON_GREEN },
+        ].map(s => (
+          <Card key={s.label} style={{ textAlign: "center", padding: 14 }}>
+            <p className="mono" style={{ fontSize: 26, fontWeight: 700, color: s.color }}>{s.value}</p>
+            <p style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{s.label}</p>
+          </Card>
+        ))}
+      </div>
+
+      {/* Weekly Progress */}
+      <Card style={{ marginBottom: 14 }}>
+        <p className="mono" style={{ fontSize: 12, color: "#888", marginBottom: 12, letterSpacing: 1 }}>PROGRESO SEMANAL</p>
+        <ResponsiveContainer width="100%" height={90}>
+          <BarChart data={weeklyData} barSize={22}>
+            <XAxis dataKey="day" tick={{ fill: "#666", fontSize: 11 }} axisLine={false} tickLine={false} />
+            <Bar dataKey="done" radius={[6, 6, 0, 0]}>
+              {weeklyData.map((e, i) => (
+                <Cell key={i} fill={i === 4 ? NEON_GREEN : ELECTRIC_BLUE + "66"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* Today Tasks */}
+      <Card style={{ marginBottom: 14 }}>
+        <p className="mono" style={{ fontSize: 12, color: "#888", marginBottom: 12, letterSpacing: 1 }}>TAREAS DE HOY</p>
+        {todayTasks.length === 0 ? (
+          <p style={{ color: NEON_GREEN, textAlign: "center", fontSize: 13 }}>✨ ¡Sin tareas urgentes hoy!</p>
+        ) : todayTasks.map(t => {
+          const sub = getSubject(t.subjectId);
+          return (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "8px 0", borderBottom: `1px solid ${CARD_BORDER}` }}>
+              <div style={{ width: 3, height: 30, borderRadius: 2, background: sub.color, flexShrink: 0 }} />
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600 }}>{t.title}</p>
+                <p style={{ fontSize: 11, color: "#666" }}>{sub.name}</p>
+              </div>
+              <Pill color="#FF6B6B" small>URGENTE</Pill>
+            </div>
+          );
+        })}
+      </Card>
+
+      {/* Hábitos rápidos */}
+      <Card style={{ marginBottom: 14 }}>
+        <p className="mono" style={{ fontSize: 12, color: "#888", marginBottom: 12, letterSpacing: 1 }}>HÁBITOS HOY</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {habits.slice(0, 4).map(h => {
+            const done = todayHabitsLog.includes(h.id);
+            return (
+              <div key={h.id} style={{
+                background: done ? NEON_GREEN + "22" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${done ? NEON_GREEN + "55" : CARD_BORDER}`,
+                borderRadius: 10, padding: "6px 12px",
+                fontSize: 12, color: done ? NEON_GREEN : "#888",
+                fontWeight: 600,
+              }}>
+                {h.name}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Próximos exámenes */}
+      <Card>
+        <p className="mono" style={{ fontSize: 12, color: "#888", marginBottom: 12, letterSpacing: 1 }}>PRÓXIMAS ENTREGAS</p>
+        {upcomingExams.map(t => {
+          const sub = getSubject(t.subjectId);
+          return (
+            <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: sub.color }} />
+                <span style={{ fontSize: 13 }}>{t.title}</span>
+              </div>
+              <span className="mono" style={{ fontSize: 11, color: "#666" }}>{formatDate(t.due)}</span>
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// ACADEMIC
+// ============================================================
+function Academic({ grades, setGrades }) {
+  const [selectedSubject, setSelectedSubject] = useState(1);
+  const [showAddGrade, setShowAddGrade] = useState(false);
+  const [newGrade, setNewGrade] = useState({ name: "", date: today(), grade: "", weight: "" });
+  const [calcTarget, setCalcTarget] = useState("");
+
+  const sub = getSubject(selectedSubject);
+  const subGrades = grades.filter(g => g.subjectId === selectedSubject);
+  const avg = calcAvg(grades, selectedSubject);
+
+  const lineData = subGrades.map((g, i) => ({ name: g.name.slice(0, 6), nota: parseFloat(g.grade) }));
+
+  const usedWeight = subGrades.reduce((s, g) => s + Number(g.weight), 0);
+  const needed = calcTarget
+    ? (((parseFloat(calcTarget) * 100) - subGrades.reduce((s, g) => s + g.grade * g.weight, 0)) / (100 - usedWeight)).toFixed(2)
+    : null;
+
+  function addGrade() {
+    if (!newGrade.name || !newGrade.grade) return;
+    setGrades(prev => [...prev, {
+      id: Date.now(), subjectId: selectedSubject,
+      name: newGrade.name, date: newGrade.date,
+      grade: parseFloat(newGrade.grade), weight: parseFloat(newGrade.weight) || 0,
+    }]);
+    setShowAddGrade(false);
+    setNewGrade({ name: "", date: today(), grade: "", weight: "" });
+  }
+
+  return (
+    <div className="fade-in" style={{ padding: "0 16px 100px" }}>
+      <div style={{ padding: "20px 0 16px" }}>
+        <h2 className="mono" style={{ fontSize: 22, fontWeight: 700, color: ELECTRIC_BLUE }}>ACADÉMICO</h2>
+      </div>
+
+      {/* Subject selector */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16 }}>
+        {SUBJECTS.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSelectedSubject(s.id)}
+            style={{
+              flexShrink: 0,
+              background: selectedSubject === s.id ? s.color + "22" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${selectedSubject === s.id ? s.color : CARD_BORDER}`,
+              borderRadius: 12, padding: "8px 14px",
+              color: selectedSubject === s.id ? s.color : "#888",
+              fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: "Space Mono, monospace",
+              boxShadow: selectedSubject === s.id ? `0 0 12px ${s.color}33` : "none",
+            }}
+          >
+            {s.short}
+          </button>
+        ))}
+      </div>
+
+      {/* Subject header */}
+      <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${sub.color}15, transparent)`, border: `1px solid ${sub.color}33` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <p style={{ color: "#888", fontSize: 11, fontFamily: "Space Mono, monospace" }}>MATERIA</p>
+            <p style={{ fontSize: 18, fontWeight: 800, marginTop: 2 }}>{sub.name}</p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ color: "#888", fontSize: 11, fontFamily: "Space Mono, monospace" }}>PROMEDIO</p>
+            <p className="mono" style={{ fontSize: 32, fontWeight: 700, color: sub.color }}>{avg}</p>
+          </div>
+        </div>
+        <ProgressBar value={parseFloat(avg)} max={10} color={sub.color} height={4} />
+      </Card>
+
+      {/* Grades chart */}
+      {lineData.length > 1 && (
+        <Card style={{ marginBottom: 14 }}>
+          <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 10, letterSpacing: 1 }}>EVOLUCIÓN DE NOTAS</p>
+          <ResponsiveContainer width="100%" height={100}>
+            <LineChart data={lineData}>
+              <XAxis dataKey="name" tick={{ fill: "#666", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 10]} tick={{ fill: "#666", fontSize: 10 }} axisLine={false} tickLine={false} width={20} />
+              <Tooltip contentStyle={{ background: "#1A1A25", border: `1px solid ${sub.color}44`, borderRadius: 8 }} />
+              <Line type="monotone" dataKey="nota" stroke={sub.color} strokeWidth={2} dot={{ fill: sub.color, r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {/* Grades table */}
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <p className="mono" style={{ fontSize: 11, color: "#888", letterSpacing: 1 }}>CALIFICACIONES</p>
+          <ActionBtn onClick={() => setShowAddGrade(true)} small color={sub.color}>+ Agregar</ActionBtn>
+        </div>
+        {subGrades.length === 0 ? (
+          <p style={{ color: "#555", fontSize: 13, textAlign: "center", padding: "16px 0" }}>Sin calificaciones aún</p>
+        ) : subGrades.map(g => (
+          <div key={g.id} style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "10px 0", borderBottom: `1px solid ${CARD_BORDER}`,
+          }}>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</p>
+              <p style={{ fontSize: 11, color: "#666" }}>{formatDate(g.date)} · {g.weight}%</p>
+            </div>
+            <span className="mono" style={{
+              fontSize: 20, fontWeight: 700,
+              color: g.grade >= 7 ? NEON_GREEN : g.grade >= 4 ? "#FFD700" : "#FF6B6B",
+            }}>{g.grade}</span>
+          </div>
+        ))}
+      </Card>
+
+      {/* Calculadora */}
+      <Card>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 12, letterSpacing: 1 }}>CALCULADORA DE APROBACIÓN</p>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            type="number" placeholder="Nota objetivo" value={calcTarget}
+            onChange={e => setCalcTarget(e.target.value)}
+            style={{
+              flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${CARD_BORDER}`,
+              borderRadius: 10, padding: "10px 12px", color: "#fff", fontSize: 14, outline: "none",
+            }}
+          />
+          <span className="mono" style={{ color: "#666", fontSize: 12 }}>necesito:</span>
+        </div>
+        {needed !== null && (
+          <div style={{ marginTop: 12, textAlign: "center" }}>
+            <p style={{ fontSize: 13, color: "#888" }}>Para llegar a <strong style={{ color: sub.color }}>{calcTarget}</strong> necesitás:</p>
+            <p className="mono" style={{
+              fontSize: 36, fontWeight: 700,
+              color: parseFloat(needed) > 10 ? "#FF6B6B" : parseFloat(needed) < 0 ? NEON_GREEN : ELECTRIC_BLUE,
+            }}>
+              {parseFloat(needed) > 10 ? "¡Imposible!" : parseFloat(needed) < 0 ? "¡Ya aprobaste!" : needed}
+            </p>
+          </div>
+        )}
+      </Card>
+
+      {/* Modal add grade */}
+      <Modal open={showAddGrade} onClose={() => setShowAddGrade(false)} title="NUEVA CALIFICACIÓN">
+        <Input label="EVALUACIÓN" value={newGrade.name} onChange={v => setNewGrade(p => ({ ...p, name: v }))} placeholder="Ej: Parcial 2" />
+        <Input label="FECHA" type="date" value={newGrade.date} onChange={v => setNewGrade(p => ({ ...p, date: v }))} />
+        <Input label="NOTA" type="number" value={newGrade.grade} onChange={v => setNewGrade(p => ({ ...p, grade: v }))} placeholder="0-10" />
+        <Input label="PESO (%)" type="number" value={newGrade.weight} onChange={v => setNewGrade(p => ({ ...p, weight: v }))} placeholder="Ej: 30" />
+        <ActionBtn onClick={addGrade} color={sub.color}>GUARDAR</ActionBtn>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// TASKS
+// ============================================================
+function Tasks({ tasks, setTasks }) {
+  const [filter, setFilter] = useState("todas");
+  const [showAdd, setShowAdd] = useState(false);
+  const [newTask, setNewTask] = useState({ title: "", subjectId: 1, due: today(), priority: "media", status: "pendiente" });
+  const [calView, setCalView] = useState(false);
+
+  function addTask() {
+    if (!newTask.title) return;
+    setTasks(prev => [...prev, { ...newTask, id: Date.now(), subjectId: Number(newTask.subjectId) }]);
+    setShowAdd(false);
+    setNewTask({ title: "", subjectId: 1, due: today(), priority: "media", status: "pendiente" });
+  }
+
+  function toggleStatus(id) {
+    setTasks(prev => prev.map(t => t.id === id
+      ? { ...t, status: t.status === "completada" ? "pendiente" : "completada" }
+      : t
+    ));
+  }
+
+  const todayStr = today();
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+  const filtered = tasks.filter(t => {
+    if (filter === "hoy") return t.due === todayStr;
+    if (filter === "semana") {
+      const d = new Date(t.due + "T00:00:00");
+      const now = new Date();
+      const diff = (d - now) / 86400000;
+      return diff >= 0 && diff <= 7;
+    }
+    if (filter === "completadas") return t.status === "completada";
+    return true;
+  });
+
+  const PRIORITY_COLORS = { alta: "#FF6B6B", media: "#FFD700", baja: NEON_GREEN };
+
+  return (
+    <div className="fade-in" style={{ padding: "0 16px 100px" }}>
+      <div style={{ padding: "20px 0 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 className="mono" style={{ fontSize: 22, fontWeight: 700, color: "#FF6B6B" }}>TAREAS</h2>
+        <div style={{ display: "flex", gap: 8 }}>
+          <ActionBtn onClick={() => setCalView(!calView)} small color={calView ? ELECTRIC_BLUE : "#666"}>
+            {calView ? "LISTA" : "📅 CAL"}
+          </ActionBtn>
+          <ActionBtn onClick={() => setShowAdd(true)} small color="#FF6B6B">+ NUEVA</ActionBtn>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto" }}>
+        {["todas", "hoy", "semana", "completadas"].map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              flexShrink: 0, background: filter === f ? "#FF6B6B22" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${filter === f ? "#FF6B6B55" : CARD_BORDER}`,
+              color: filter === f ? "#FF6B6B" : "#888",
+              borderRadius: 20, padding: "6px 14px", fontSize: 11,
+              fontWeight: 700, cursor: "pointer", fontFamily: "Space Mono, monospace",
+              letterSpacing: 0.5, textTransform: "uppercase",
+            }}
+          >{f}</button>
+        ))}
+      </div>
+
+      {/* Calendar mini view */}
+      {calView && (
+        <Card style={{ marginBottom: 14 }}>
+          <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 10, letterSpacing: 1 }}>ABRIL 2025</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {["L","M","M","J","V","S","D"].map(d => (
+              <div key={d} style={{ textAlign: "center", fontSize: 10, color: "#555", padding: "2px 0", fontFamily: "Space Mono" }}>{d}</div>
+            ))}
+            {Array.from({ length: 30 }, (_, i) => i + 1).map(day => {
+              const dateStr = `2025-04-${String(day).padStart(2, "0")}`;
+              const hasTasks = tasks.some(t => t.due === dateStr && t.status !== "completada");
+              const isToday = day === 20;
+              return (
+                <div key={day} style={{
+                  textAlign: "center", fontSize: 11, padding: "5px 2px",
+                  borderRadius: 6,
+                  background: isToday ? NEON_GREEN + "33" : hasTasks ? "#FF6B6B22" : "transparent",
+                  color: isToday ? NEON_GREEN : hasTasks ? "#FF6B6B" : "#666",
+                  fontWeight: isToday || hasTasks ? 700 : 400,
+                  fontFamily: "Space Mono",
+                }}>{day}</div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Task list */}
+      {filtered.map(t => {
+        const sub = getSubject(t.subjectId);
+        const isUrgent = t.due === todayStr;
+        const isTomorrow = t.due === tomorrowStr;
+        return (
+          <Card key={t.id} style={{ marginBottom: 10, opacity: t.status === "completada" ? 0.5 : 1 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <button
+                onClick={() => toggleStatus(t.id)}
+                style={{
+                  width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 2,
+                  background: t.status === "completada" ? NEON_GREEN : "transparent",
+                  border: `2px solid ${t.status === "completada" ? NEON_GREEN : "#555"}`,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {t.status === "completada" && <span style={{ fontSize: 12 }}>✓</span>}
+              </button>
+              <div style={{ flex: 1 }}>
+                <p style={{
+                  fontSize: 14, fontWeight: 600,
+                  textDecoration: t.status === "completada" ? "line-through" : "none",
+                  color: t.status === "completada" ? "#555" : "#fff",
+                }}>{t.title}</p>
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <Pill color={sub.color} small>{sub.short}</Pill>
+                  <Pill color={PRIORITY_COLORS[t.priority]} small>{t.priority.toUpperCase()}</Pill>
+                  {isUrgent && <Pill color="#FF6B6B" small>🔴 HOY</Pill>}
+                  {isTomorrow && <Pill color="#FFD700" small>🟡 MAÑANA</Pill>}
+                  <span className="mono" style={{ fontSize: 10, color: "#555" }}>{formatDate(t.due)}</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+
+      {/* Modal */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="NUEVA TAREA">
+        <Input label="TÍTULO" value={newTask.title} onChange={v => setNewTask(p => ({ ...p, title: v }))} placeholder="Ej: Resolver ejercicios" />
+        <Select label="MATERIA" value={newTask.subjectId} onChange={v => setNewTask(p => ({ ...p, subjectId: v }))}
+          options={SUBJECTS.map(s => ({ value: s.id, label: s.name }))} />
+        <Input label="FECHA LÍMITE" type="date" value={newTask.due} onChange={v => setNewTask(p => ({ ...p, due: v }))} />
+        <Select label="PRIORIDAD" value={newTask.priority} onChange={v => setNewTask(p => ({ ...p, priority: v }))}
+          options={[{ value: "alta", label: "Alta" }, { value: "media", label: "Media" }, { value: "baja", label: "Baja" }]} />
+        <ActionBtn onClick={addTask} color="#FF6B6B">AGREGAR TAREA</ActionBtn>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// POMODORO
+// ============================================================
+function Pomodoro({ sessions, setSessions }) {
+  const MODES = [
+    { label: "FOCO", duration: 25 * 60, color: "#FFD700" },
+    { label: "DESCANSO", duration: 5 * 60, color: NEON_GREEN },
+    { label: "DESCANSO LARGO", duration: 15 * 60, color: ELECTRIC_BLUE },
+  ];
+  const [modeIdx, setModeIdx] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(MODES[0].duration);
+  const [running, setRunning] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState("Matemáticas");
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    setTimeLeft(MODES[modeIdx].duration);
+    setRunning(false);
+    clearInterval(intervalRef.current);
+  }, [modeIdx]);
+
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft(t => {
+          if (t <= 1) {
+            clearInterval(intervalRef.current);
+            setRunning(false);
+            if (modeIdx === 0) {
+              setSessions(prev => [...prev, { date: today(), duration: 25, subject: selectedSubject }]);
+            }
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running, modeIdx, selectedSubject]);
+
+  const mode = MODES[modeIdx];
+  const pct = 1 - timeLeft / mode.duration;
+  const mins = String(Math.floor(timeLeft / 60)).padStart(2, "0");
+  const secs = String(timeLeft % 60).padStart(2, "0");
+  const circumference = 2 * Math.PI * 80;
+  const strokeDash = circumference * pct;
+
+  const todaySessions = sessions.filter(s => s.date === today() || s.date === "2025-04-20");
+  const subjectDist = SUBJECTS.map(s => ({
+    name: s.short,
+    value: sessions.filter(sess => sess.subject === s.name).length * 25,
+    color: s.color,
+  })).filter(s => s.value > 0);
+
+  return (
+    <div className="fade-in" style={{ padding: "0 16px 100px" }}>
+      <div style={{ padding: "20px 0 16px" }}>
+        <h2 className="mono" style={{ fontSize: 22, fontWeight: 700, color: "#FFD700" }}>POMODORO</h2>
+      </div>
+
+      {/* Mode selector */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {MODES.map((m, i) => (
+          <button
+            key={m.label}
+            onClick={() => setModeIdx(i)}
+            style={{
+              flex: 1, background: modeIdx === i ? m.color + "22" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${modeIdx === i ? m.color + "77" : CARD_BORDER}`,
+              color: modeIdx === i ? m.color : "#666",
+              borderRadius: 10, padding: "8px 4px", fontSize: 9,
+              fontWeight: 700, cursor: "pointer", fontFamily: "Space Mono, monospace",
+              letterSpacing: 0.3,
+            }}
+          >{m.label}</button>
+        ))}
+      </div>
+
+      {/* Subject selector */}
+      <div style={{ marginBottom: 20 }}>
+        <select
+          value={selectedSubject}
+          onChange={e => setSelectedSubject(e.target.value)}
+          style={{
+            width: "100%", background: "rgba(255,255,255,0.05)",
+            border: `1px solid ${CARD_BORDER}`, borderRadius: 10,
+            padding: "10px 12px", color: "#fff", fontSize: 13, outline: "none",
+          }}
+        >
+          {SUBJECTS.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+        </select>
+      </div>
+
+      {/* Timer circle */}
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+        <div style={{ position: "relative", width: 200, height: 200 }}>
+          <svg width="200" height="200" style={{ transform: "rotate(-90deg)" }}>
+            <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+            <circle
+              cx="100" cy="100" r="80" fill="none"
+              stroke={mode.color} strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${strokeDash} ${circumference}`}
+              style={{ transition: "stroke-dasharray 1s linear", filter: `drop-shadow(0 0 8px ${mode.color})` }}
+            />
+          </svg>
+          <div style={{
+            position: "absolute", inset: 0, display: "flex",
+            flexDirection: "column", alignItems: "center", justifyContent: "center",
+          }}>
+            <span className="mono" style={{ fontSize: 44, fontWeight: 700, color: mode.color }}>{mins}:{secs}</span>
+            <span style={{ fontSize: 11, color: "#666", fontFamily: "Space Mono" }}>{mode.label}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 24 }}>
+        <button
+          onClick={() => setRunning(r => !r)}
+          style={{
+            width: 64, height: 64, borderRadius: "50%",
+            background: `linear-gradient(135deg, ${mode.color}44, ${mode.color}22)`,
+            border: `2px solid ${mode.color}77`,
+            color: mode.color, fontSize: 22, cursor: "pointer",
+            boxShadow: `0 0 20px ${mode.color}44`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          {running ? "⏸" : "▶"}
+        </button>
+        <button
+          onClick={() => { setTimeLeft(mode.duration); setRunning(false); }}
+          style={{
+            width: 64, height: 64, borderRadius: "50%",
+            background: "rgba(255,255,255,0.05)", border: `2px solid ${CARD_BORDER}`,
+            color: "#666", fontSize: 18, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >↺</button>
+      </div>
+
+      {/* Today stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        <Card style={{ textAlign: "center" }}>
+          <p className="mono" style={{ fontSize: 26, fontWeight: 700, color: "#FFD700" }}>{todaySessions.length}</p>
+          <p style={{ fontSize: 11, color: "#666", marginTop: 2 }}>Sesiones hoy</p>
+        </Card>
+        <Card style={{ textAlign: "center" }}>
+          <p className="mono" style={{ fontSize: 26, fontWeight: 700, color: ELECTRIC_BLUE }}>{sessions.length}</p>
+          <p style={{ fontSize: 11, color: "#666", marginTop: 2 }}>Total semana</p>
+        </Card>
+      </div>
+
+      {/* Donut chart */}
+      {subjectDist.length > 0 && (
+        <Card style={{ marginBottom: 14 }}>
+          <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 10, letterSpacing: 1 }}>TIEMPO POR MATERIA (min)</p>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <ResponsiveContainer width={140} height={120}>
+              <PieChart>
+                <Pie data={subjectDist} cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} dataKey="value">
+                  {subjectDist.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{ flex: 1 }}>
+              {subjectDist.map(s => (
+                <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color }} />
+                  <span style={{ fontSize: 12, color: "#aaa" }}>{s.name}</span>
+                  <span className="mono" style={{ fontSize: 12, color: s.color, marginLeft: "auto" }}>{s.value}m</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Session history */}
+      <Card>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 10, letterSpacing: 1 }}>HISTORIAL</p>
+        {sessions.slice(-5).reverse().map((s, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${CARD_BORDER}` }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#FFD700" }} />
+              <span style={{ fontSize: 13 }}>{s.subject}</span>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <span className="mono" style={{ fontSize: 11, color: "#FFD700" }}>{s.duration}min</span>
+              <span className="mono" style={{ fontSize: 11, color: "#555" }}>{formatDate(s.date)}</span>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// FINANCES
+// ============================================================
+function Finances({ finances, setFinances }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newTx, setNewTx] = useState({ desc: "", cat: "comida", amount: "", type: "expense" });
+
+  function addTransaction() {
+    if (!newTx.desc || !newTx.amount) return;
+    const amt = newTx.type === "expense" ? -Math.abs(parseFloat(newTx.amount)) : Math.abs(parseFloat(newTx.amount));
+    setFinances(prev => ({
+      ...prev,
+      balance: prev.balance + amt,
+      transactions: [...prev.transactions, { id: Date.now(), ...newTx, amount: amt, date: today() }],
+    }));
+    setShowAdd(false);
+    setNewTx({ desc: "", cat: "comida", amount: "", type: "expense" });
+  }
+
+  const cats = ["comida", "transporte", "materiales", "ocio", "otro"];
+  const catColors = { comida: "#FF6B6B", transporte: ELECTRIC_BLUE, materiales: "#FFD700", ocio: "#FF61D2", otro: "#888", ingreso: NEON_GREEN };
+  const spendingByCat = cats.map(c => ({
+    cat: c, value: Math.abs(finances.transactions.filter(t => t.cat === c).reduce((s, t) => s + t.amount, 0)),
+    color: catColors[c],
+  })).filter(c => c.value > 0);
+
+  const totalIncome = finances.transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = Math.abs(finances.transactions.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0));
+
+  return (
+    <div className="fade-in" style={{ padding: "0 16px 100px" }}>
+      <div style={{ padding: "20px 0 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 className="mono" style={{ fontSize: 22, fontWeight: 700, color: "#FF61D2" }}>FINANZAS</h2>
+        <ActionBtn onClick={() => setShowAdd(true)} small color="#FF61D2">+ MOVER</ActionBtn>
+      </div>
+
+      {/* Balance card */}
+      <Card style={{
+        marginBottom: 14,
+        background: "linear-gradient(135deg, rgba(255,97,210,0.15), rgba(0,144,255,0.1))",
+        border: "1px solid rgba(255,97,210,0.3)",
+      }}>
+        <p style={{ color: "#888", fontSize: 11, fontFamily: "Space Mono, monospace", letterSpacing: 1 }}>BALANCE ACTUAL</p>
+        <p className="mono" style={{ fontSize: 38, fontWeight: 700, color: "#FF61D2", margin: "4px 0" }}>
+          ${finances.balance.toLocaleString("es-AR")}
+        </p>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: "#888" }}>Meta de ahorro</span>
+            <span className="mono" style={{ fontSize: 11, color: "#FF61D2" }}>
+              {Math.round((finances.balance / finances.savingsGoal) * 100)}%
+            </span>
+          </div>
+          <ProgressBar value={finances.balance} max={finances.savingsGoal} color="#FF61D2" />
+        </div>
+      </Card>
+
+      {/* Income vs Expenses */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        <Card style={{ background: `${NEON_GREEN}11`, border: `1px solid ${NEON_GREEN}33` }}>
+          <p style={{ fontSize: 10, color: "#888", fontFamily: "Space Mono", marginBottom: 4 }}>INGRESOS</p>
+          <p className="mono" style={{ fontSize: 18, fontWeight: 700, color: NEON_GREEN }}>${totalIncome.toLocaleString()}</p>
+        </Card>
+        <Card style={{ background: "#FF6B6B11", border: "1px solid #FF6B6B33" }}>
+          <p style={{ fontSize: 10, color: "#888", fontFamily: "Space Mono", marginBottom: 4 }}>GASTOS</p>
+          <p className="mono" style={{ fontSize: 18, fontWeight: 700, color: "#FF6B6B" }}>${totalExpenses.toLocaleString()}</p>
+        </Card>
+      </div>
+
+      {/* Spending chart */}
+      <Card style={{ marginBottom: 14 }}>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 12, letterSpacing: 1 }}>GASTOS POR CATEGORÍA</p>
+        <ResponsiveContainer width="100%" height={120}>
+          <BarChart data={spendingByCat} barSize={28}>
+            <XAxis dataKey="cat" tick={{ fill: "#666", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ background: "#1A1A25", border: "1px solid #333", borderRadius: 8 }} formatter={v => `$${v}`} />
+            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+              {spendingByCat.map((e, i) => <Cell key={i} fill={e.color} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* Transaction list */}
+      <Card>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 12, letterSpacing: 1 }}>MOVIMIENTOS</p>
+        {finances.transactions.slice().reverse().map(t => (
+          <div key={t.id} style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "10px 0", borderBottom: `1px solid ${CARD_BORDER}`,
+          }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 10,
+                background: (catColors[t.cat] || "#888") + "22",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14,
+              }}>
+                {t.cat === "comida" ? "🍔" : t.cat === "transporte" ? "🚌" : t.cat === "materiales" ? "📚" : t.cat === "ocio" ? "🎮" : t.cat === "ingreso" ? "💰" : "💳"}
+              </div>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600 }}>{t.desc}</p>
+                <p style={{ fontSize: 10, color: "#666" }}>{formatDate(t.date)} · {t.cat}</p>
+              </div>
+            </div>
+            <span className="mono" style={{
+              fontSize: 15, fontWeight: 700,
+              color: t.amount > 0 ? NEON_GREEN : "#FF6B6B",
+            }}>
+              {t.amount > 0 ? "+" : ""}${Math.abs(t.amount).toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </Card>
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="NUEVO MOVIMIENTO">
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {["income", "expense"].map(ty => (
+            <button
+              key={ty}
+              onClick={() => setNewTx(p => ({ ...p, type: ty }))}
+              style={{
+                flex: 1, padding: "10px", borderRadius: 10, cursor: "pointer",
+                background: newTx.type === ty ? (ty === "income" ? NEON_GREEN + "22" : "#FF6B6B22") : "rgba(255,255,255,0.04)",
+                border: `1px solid ${newTx.type === ty ? (ty === "income" ? NEON_GREEN : "#FF6B6B") : CARD_BORDER}`,
+                color: newTx.type === ty ? (ty === "income" ? NEON_GREEN : "#FF6B6B") : "#888",
+                fontWeight: 700, fontSize: 12, fontFamily: "Space Mono",
+              }}
+            >
+              {ty === "income" ? "INGRESO" : "GASTO"}
+            </button>
+          ))}
+        </div>
+        <Input label="DESCRIPCIÓN" value={newTx.desc} onChange={v => setNewTx(p => ({ ...p, desc: v }))} placeholder="Ej: Almuerzo" />
+        <Input label="MONTO ($)" type="number" value={newTx.amount} onChange={v => setNewTx(p => ({ ...p, amount: v }))} placeholder="0" />
+        <Select label="CATEGORÍA" value={newTx.cat} onChange={v => setNewTx(p => ({ ...p, cat: v }))}
+          options={[...cats, "ingreso"].map(c => ({ value: c, label: c }))} />
+        <ActionBtn onClick={addTransaction} color="#FF61D2">GUARDAR</ActionBtn>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// HABITS
+// ============================================================
+function Habits({ habits, setHabits, habitLog, setHabitLog }) {
+  const [note, setNote] = useState("Hoy tuve un día productivo. Completé el informe de Química y pude avanzar bastante con Matemáticas. 🚀");
+  const [showAdd, setShowAdd] = useState(false);
+  const [newHabit, setNewHabit] = useState("");
+
+  const todayStr = today();
+  const todayLog = habitLog[todayStr] || [];
+
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date("2025-04-14");
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split("T")[0];
+  });
+
+  function toggleHabit(hid) {
+    setHabitLog(prev => {
+      const curr = prev[todayStr] || [];
+      const updated = curr.includes(hid) ? curr.filter(x => x !== hid) : [...curr, hid];
+      return { ...prev, [todayStr]: updated };
+    });
+  }
+
+  function addHabit() {
+    if (!newHabit.trim()) return;
+    setHabits(prev => [...prev, { id: Date.now(), name: newHabit, streak: 0 }]);
+    setNewHabit("");
+    setShowAdd(false);
+  }
+
+  const dayLabels = ["L", "M", "M", "J", "V", "S", "D"];
+
+  return (
+    <div className="fade-in" style={{ padding: "0 16px 100px" }}>
+      <div style={{ padding: "20px 0 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 className="mono" style={{ fontSize: 22, fontWeight: 700, color: NEON_GREEN }}>HÁBITOS</h2>
+        <ActionBtn onClick={() => setShowAdd(true)} small color={NEON_GREEN}>+ HÁBITO</ActionBtn>
+      </div>
+
+      {/* Today checklist */}
+      <Card style={{ marginBottom: 14 }}>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 12, letterSpacing: 1 }}>
+          HOY · {todayLog.length}/{habits.length} COMPLETADOS
+        </p>
+        <ProgressBar value={todayLog.length} max={habits.length} color={NEON_GREEN} height={4} />
+        <div style={{ marginTop: 14 }}>
+          {habits.map(h => {
+            const done = todayLog.includes(h.id);
+            return (
+              <div
+                key={h.id}
+                onClick={() => toggleHabit(h.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
+                  borderBottom: `1px solid ${CARD_BORDER}`, cursor: "pointer",
+                }}
+              >
+                <div style={{
+                  width: 24, height: 24, borderRadius: 8, flexShrink: 0,
+                  background: done ? NEON_GREEN : "transparent",
+                  border: `2px solid ${done ? NEON_GREEN : "#444"}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: done ? `0 0 10px ${NEON_GREEN}66` : "none",
+                  transition: "all 0.2s",
+                }}>
+                  {done && <span style={{ fontSize: 14, color: "#000", fontWeight: 900 }}>✓</span>}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: done ? NEON_GREEN : "#fff" }}>{h.name}</p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 12 }}>🔥</span>
+                  <span className="mono" style={{ fontSize: 12, color: "#FFD700" }}>{h.streak}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Heatmap */}
+      <Card style={{ marginBottom: 14 }}>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 12, letterSpacing: 1 }}>TRACKER SEMANAL</p>
+        <div style={{ overflowX: "auto" }}>
+          <div style={{ minWidth: 280 }}>
+            {/* Header row */}
+            <div style={{ display: "grid", gridTemplateColumns: `80px repeat(7, 1fr)`, gap: 4, marginBottom: 6 }}>
+              <div />
+              {dayLabels.map((d, i) => (
+                <div key={i} style={{ textAlign: "center", fontSize: 10, color: "#666", fontFamily: "Space Mono" }}>{d}</div>
+              ))}
+            </div>
+            {habits.map(h => (
+              <div key={h.id} style={{ display: "grid", gridTemplateColumns: `80px repeat(7, 1fr)`, gap: 4, marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: "#888", display: "flex", alignItems: "center", overflow: "hidden" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name.split(" ")[0]}</span>
+                </div>
+                {weekDays.map((d, di) => {
+                  const log = habitLog[d] || [];
+                  const done = log.includes(h.id);
+                  return (
+                    <div key={di} style={{
+                      height: 28, borderRadius: 6,
+                      background: done ? NEON_GREEN + "BB" : "rgba(255,255,255,0.05)",
+                      border: `1px solid ${done ? NEON_GREEN + "55" : CARD_BORDER}`,
+                      boxShadow: done ? `0 0 6px ${NEON_GREEN}44` : "none",
+                      transition: "all 0.2s",
+                    }} />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* Journal */}
+      <Card>
+        <p className="mono" style={{ fontSize: 11, color: "#888", marginBottom: 12, letterSpacing: 1 }}>JOURNAL DEL DÍA</p>
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          rows={5}
+          placeholder="¿Cómo fue tu día? ¿Qué aprendiste?"
+          style={{
+            width: "100%", background: "rgba(255,255,255,0.04)",
+            border: `1px solid ${CARD_BORDER}`, borderRadius: 12,
+            padding: 14, color: "#ccc", fontSize: 14, resize: "none",
+            outline: "none", fontFamily: "Nunito, sans-serif", lineHeight: 1.6,
+          }}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+          <span style={{ fontSize: 11, color: "#555" }}>{note.length} caracteres</span>
+        </div>
+      </Card>
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="NUEVO HÁBITO">
+        <Input label="NOMBRE DEL HÁBITO" value={newHabit} onChange={setNewHabit} placeholder="Ej: Meditar 🧘" />
+        <ActionBtn onClick={addHabit} color={NEON_GREEN}>AGREGAR</ActionBtn>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+export default function StudyFlow() {
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [grades, setGrades] = useState(INITIAL_GRADES);
+  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const [pomodoroSessions, setPomodoroSessions] = useState(POMODORO_SESSIONS);
+  const [finances, setFinances] = useState(INITIAL_FINANCES);
+  const [habits, setHabits] = useState(INITIAL_HABITS);
+  const [habitLog, setHabitLog] = useState(HABIT_LOG);
+
+  return (
+    <>
+      <style>{globalStyle}</style>
+      {/* Background gradient */}
+      <div style={{
+        position: "fixed", inset: 0, zIndex: -1,
+        background: `radial-gradient(ellipse at 20% 10%, ${NEON_GREEN}0A 0%, transparent 50%),
+                     radial-gradient(ellipse at 80% 80%, ${ELECTRIC_BLUE}0A 0%, transparent 50%),
+                     ${BG}`,
+      }} />
+
+      {/* App container */}
+      <div style={{
+        maxWidth: 430,
+        margin: "0 auto",
+        minHeight: "100dvh",
+        position: "relative",
+        overflowX: "hidden",
+      }}>
+        {/* Page content */}
+        <div key={activeTab} style={{ overflowY: "auto", minHeight: "100dvh" }}>
+          {activeTab === "dashboard" && (
+            <Dashboard tasks={tasks} habits={habits} habitLog={habitLog} grades={grades} pomodoroSessions={pomodoroSessions} />
+          )}
+          {activeTab === "academic" && (
+            <Academic grades={grades} setGrades={setGrades} />
+          )}
+          {activeTab === "tasks" && (
+            <Tasks tasks={tasks} setTasks={setTasks} />
+          )}
+          {activeTab === "pomodoro" && (
+            <Pomodoro sessions={pomodoroSessions} setSessions={setPomodoroSessions} />
+          )}
+          {activeTab === "finances" && (
+            <Finances finances={finances} setFinances={setFinances} />
+          )}
+          {activeTab === "habits" && (
+            <Habits habits={habits} setHabits={setHabits} habitLog={habitLog} setHabitLog={setHabitLog} />
+          )}
+        </div>
+
+        <BottomNav active={activeTab} onTab={setActiveTab} />
+      </div>
+    </>
+  );
+}
